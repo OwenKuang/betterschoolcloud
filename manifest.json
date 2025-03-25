@@ -1,0 +1,38 @@
+{
+    "manifest_version": 3,
+    "name": "Better SchoolCloud",
+    "version": "1.5.3",
+    "description": "Takes your SchoolCloud experience to the next level.",
+    "icons": {
+        "16": "icon16.png"
+    },
+    "action": { 
+        "default_icon": {
+            "32": "icon32.png",
+            "16": "icon16.png",
+            "48": "icon48.png",
+            "128": "icon128.png"
+        },
+        "default_popup": "popup.html",
+        "default_title": "BetterSchooCloud"
+    },
+    "content_scripts": [
+        {
+            "matches": [
+                "https://schoolcloud.ca/Student*",
+                "https://schoolcloud.ca/ParentStudent/Search"
+            ],
+            "css": [
+                "style.css"
+            ],
+            "js": [
+                "avandweightcalc.js",
+                "backgroundsave.js",
+                "gradechanger.js"
+            ],
+            "run_at": "document_end",
+            "all_frames": true
+        }
+    ],
+    "permissions": []
+}

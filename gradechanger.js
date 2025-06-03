@@ -3,7 +3,8 @@
 // Global storage for editable values
 let editableMarks = new Map(); 
 let editableWeights = new Map(); 
-let editablePossiblePoints = new Map(); 
+let editablePossiblePoints = new Map();
+let originalValues = new Map(); // Store original values for reset 
 
 // Function to create unique identifier for each grade cell
 function createCellId(sectionIndex, tableIndex, rowIndex) {
@@ -360,10 +361,18 @@ function initializeEditableGrades() {
         return;
     }
 
-    // Clear existing data for fresh start
-    editableMarks.clear();
-    editableWeights.clear();
-    editablePossiblePoints.clear();
+    // Only clear data if we're starting fresh (no existing inputs)
+    const hasExistingInputs = courseSummaryElement.querySelector('.mark-input, .points-input, .weight-input');
+    if (!hasExistingInputs) {
+        console.log("Starting fresh - clearing data and reading original values");
+        editableMarks.clear();
+        editableWeights.clear();
+        editablePossiblePoints.clear();
+        originalValues.clear();
+    } else {
+        console.log("Inputs already exist - keeping current data");
+        return; // Don't re-initialize if inputs already exist
+    }
 
     const courseSections = courseSummaryElement.querySelectorAll('li');
     console.log(`Found ${courseSections.length} sections`);
@@ -377,21 +386,21 @@ function initializeEditableGrades() {
             rows.forEach((row, rowIndex) => {
                 const cellId = createCellId(sectionIndex, tableIndex, rowIndex);
                 
-                // Make mark editable
+                // Make mark editable - only read from span elements (original data)
                 const markCell = row.querySelector('td[data-label="Mark"] span');
                 if (markCell && !row.querySelector('.mark-input')) {
                     makeMarkEditable(markCell, cellId);
                 }
                 
-                // Make possible points editable
+                // Make possible points editable - only read from text content (original data)
                 const pointsCell = row.querySelector('td[data-label="Points"]');
-                if (pointsCell && pointsCell.textContent.trim() && !row.querySelector('.points-input')) {
+                if (pointsCell && pointsCell.textContent.trim() && !pointsCell.querySelector('input')) {
                     makePointsEditable(pointsCell, cellId);
                 }
                 
-                // Make weight editable
+                // Make weight editable - only read from text content (original data)
                 const weightCell = row.querySelector('td[data-label="Weight"]');
-                if (weightCell && !row.querySelector('.weight-input')) {
+                if (weightCell && !weightCell.querySelector('input')) {
                     makeWeightEditable(weightCell, cellId);
                 }
             });
@@ -399,6 +408,7 @@ function initializeEditableGrades() {
     });
     
     console.log(`Grades are now editable - ${editableMarks.size} marks, ${editablePossiblePoints.size} points, ${editableWeights.size} weights`);
+    console.log("Original values stored:", originalValues);
 }
 
 // Make mark cell editable
@@ -406,6 +416,8 @@ function makeMarkEditable(element, cellId) {
     const originalValue = parseFloat(element.textContent.trim());
     if (isNaN(originalValue)) return;
     
+    // Store original value for reset
+    originalValues.set(`${cellId}_mark`, originalValue);
     editableMarks.set(cellId, originalValue);
     
     const input = document.createElement('input');
@@ -433,6 +445,8 @@ function makePointsEditable(element, cellId) {
     const originalValue = parseInt(element.textContent.trim());
     if (isNaN(originalValue) || originalValue <= 0) return;
     
+    // Store original value for reset
+    originalValues.set(`${cellId}_points`, originalValue);
     editablePossiblePoints.set(cellId, originalValue);
     
     const input = document.createElement('input');
@@ -459,14 +473,17 @@ function makePointsEditable(element, cellId) {
 
 // Make weight cell editable
 function makeWeightEditable(element, cellId) {
-    const originalValue = parseFloat(element.textContent.trim()) || 1;
+    const originalText = element.textContent.trim();
+    const originalValue = originalText === '' ? 1 : parseFloat(originalText);
     
+    // Store original value for reset (keep 0 if it's 0)
+    originalValues.set(`${cellId}_weight`, originalValue);
     editableWeights.set(cellId, originalValue);
     
     const input = document.createElement('input');
     input.type = 'number';
     input.value = originalValue;
-    input.min = '0.1';
+    input.min = '0';
     input.step = '0.1';
     input.classList.add('weight-input');
     input.style.width = '50px';
@@ -476,8 +493,9 @@ function makeWeightEditable(element, cellId) {
     input.style.textAlign = 'center';
     
     input.addEventListener('input', function() {
-        const newValue = parseFloat(this.value) || 0.1;
-        editableWeights.set(cellId, newValue);
+        const newValue = parseFloat(this.value);
+        // Allow 0 weights, only default to 0.1 if NaN
+        editableWeights.set(cellId, isNaN(newValue) ? 0.1 : newValue);
         setTimeout(calculateFinalAverage, 300);
     });
     

@@ -5,6 +5,7 @@ let editableMarks = new Map();
 let editableWeights = new Map(); 
 let editablePossiblePoints = new Map(); 
 let originalValues = new Map(); // Store original values for reset
+let originalOverallGrade = null; // Store the original overall grade from SchoolCloud
 
 // Function to create unique identifier for each grade cell
 function createCellId(sectionIndex, tableIndex, rowIndex) {
@@ -92,9 +93,14 @@ function calculateTableAverage(table, sectionIndex, tableIndex) {
                 } else if (!isNaN(parseFloat(markText))) {
                     mark = parseFloat(markText);
                 } else {
-                    // Skip non-numeric values like "absent", "excused", "collected"
+                    // Skip non-numeric values like "absent", "excused", "collected", empty cells
+                    console.log(`⏭️ Skipping row with non-numeric mark: "${markText}"`);
                     return; // Skip this row
                 }
+            } else {
+                // No mark found, skip this row
+                console.log(`⏭️ Skipping row with no mark found`);
+                return;
             }
         }
         
@@ -107,7 +113,15 @@ function calculateTableAverage(table, sectionIndex, tableIndex) {
             if (pointsInput && pointsInput.value !== '') {
                 possiblePoints = parseInt(pointsInput.value);
             } else if (pointsCell) {
-                possiblePoints = parseInt(pointsCell.textContent.trim());
+                const pointsText = pointsCell.textContent.trim();
+                possiblePoints = parseInt(pointsText);
+                if (isNaN(possiblePoints) || possiblePoints <= 0) {
+                    console.log(`⏭️ Skipping row with invalid points: "${pointsText}"`);
+                    return;
+                }
+            } else {
+                console.log(`⏭️ Skipping row with no points found`);
+                return;
             }
         }
         
@@ -127,8 +141,14 @@ function calculateTableAverage(table, sectionIndex, tableIndex) {
             }
         }
 
-        if (!isNaN(mark) && !isNaN(possiblePoints) && !isNaN(weight) && possiblePoints > 0) {
+        // Only process if we have valid data
+        if (!isNaN(mark) && !isNaN(possiblePoints) && !isNaN(weight) && possiblePoints > 0 && mark >= 0) {
             console.log(`Mark found: ${mark}, Possible Points: ${possiblePoints}, Weight: ${weight}`);
+            
+            // Update individual assignment overall mark (ONLY for this specific assignment)
+            const percentage = (mark / possiblePoints) * 100;
+            updateAssignmentOverallMark(row, percentage);
+            
             totalMarks += ((mark / possiblePoints) * weight);
             totalPossiblePoints += weight;
             totalCells++;
@@ -142,7 +162,47 @@ function calculateTableAverage(table, sectionIndex, tableIndex) {
     console.log("Total marks: ", totalMarks);
     console.log("Possible: ", totalPossiblePoints);
     console.log('Table Average:', average.toFixed(4));
+    
+    // Update table overall mark
+    updateTableOverallMark(table, average * 100);
+    
     return average;
+}
+
+// Update individual assignment overall mark - FIXED
+function updateAssignmentOverallMark(row, percentage) {
+    const overallMarkCell = row.querySelector('td[data-label="Overall Mark"]');
+    if (overallMarkCell) {
+        // Only update if this cell doesn't already have our custom display
+        if (!overallMarkCell.classList.contains('updated-overall-mark')) {
+            overallMarkCell.classList.add('updated-overall-mark');
+            overallMarkCell.style.fontWeight = 'bold';
+            overallMarkCell.style.color = '#2E7D32';
+        }
+        
+        // Update the text content directly
+        overallMarkCell.textContent = `${percentage.toFixed(2)}%`;
+    }
+}
+
+// Update table overall mark - SIMPLIFIED
+function updateTableOverallMark(table, percentage) {
+    // Find the bottom row of the table that shows the overall percentage
+    const tableRows = table.querySelectorAll('tr');
+    const lastRow = tableRows[tableRows.length - 1];
+    
+    if (lastRow) {
+        const lastCell = lastRow.querySelector('td:last-child');
+        if (lastCell && (lastCell.textContent.includes('%') || lastCell.textContent.trim() === '')) {
+            if (!lastCell.classList.contains('updated-table-mark')) {
+                lastCell.classList.add('updated-table-mark');
+                lastCell.style.fontWeight = 'bold';
+                lastCell.style.color = '#1976D2';
+                lastCell.style.fontSize = '14px';
+            }
+            lastCell.textContent = `${percentage.toFixed(2)}%`;
+        }
+    }
 }
 
 // Original calculation function with editable support
@@ -272,7 +332,7 @@ function calculateFinalAverage() {
     updateGradeDisplay(finaloutput);
 }
 
-// Update grade display - always show calculated grade when editing
+// Update grade display - check against original before updating
 function updateGradeDisplay(finaloutput) {
     var tableElement = document.querySelector('.printed-block.sixty-percent');
 
@@ -280,13 +340,27 @@ function updateGradeDisplay(finaloutput) {
         var markElement = tableElement.querySelectorAll('td span')[1];
 
         if (markElement) {
-            const calculatedGrade = (finaloutput * 100).toFixed(2);
+            // Store original grade if we haven't already
+            if (originalOverallGrade === null) {
+                originalOverallGrade = parseFloat(markElement.textContent.trim());
+                console.log(`📊 Stored original overall grade: ${originalOverallGrade}%`);
+            }
             
-            // Always update the grade display
-            markElement.textContent = calculatedGrade;
+            const calculatedGrade = (finaloutput * 100);
+            const difference = Math.abs(calculatedGrade - originalOverallGrade);
             
-            // Add tooltip indicating it's been calculated by BetterSchoolCloud
-            addTooltip(markElement, 'Interactive grade calculated by BetterSchoolCloud. Edit values above to see changes.');
+            console.log(`🧮 Calculated: ${calculatedGrade.toFixed(2)}%, Original: ${originalOverallGrade}%, Difference: ${difference.toFixed(2)}%`);
+            
+            // Only update if within 0.5% difference
+            if (difference <= 0.5) {
+                markElement.textContent = calculatedGrade.toFixed(2);
+                addTooltip(markElement, 'Interactive grade calculated by BetterSchoolCloud. Edit values above to see changes.');
+                console.log(`✅ Grade updated to calculated value: ${calculatedGrade.toFixed(2)}%`);
+            } else {
+                markElement.textContent = originalOverallGrade.toString();
+                addTooltip(markElement, `Calculated grade (${calculatedGrade.toFixed(2)}%) differs by more than 0.5% from original. Showing original grade.`);
+                console.log(`⚠️ Difference too large (${difference.toFixed(2)}%), keeping original grade: ${originalOverallGrade}%`);
+            }
         }
     }
 }
@@ -379,6 +453,7 @@ function initializeEditableGrades() {
         editableWeights.clear();
         editablePossiblePoints.clear();
         originalValues.clear();
+        originalOverallGrade = null; // Reset stored original grade
     } else {
         console.log("Inputs already exist - keeping current data");
         return; // Don't re-initialize if inputs already exist
@@ -429,10 +504,10 @@ function makeMarkEditable(element, cellId) {
     // Handle special cases
     if (originalText.toLowerCase() === 'nhi') {
         originalValue = 0; // NHI (Not Handed In) = 0
-        console.log('Found NHI assignment - converting "${originalText}" to 0');
+        console.log(`🎯 Found NHI assignment - converting "${originalText}" to 0`);
     } else if (isNaN(parseFloat(originalText))) {
         // Skip non-numeric values like "absent", "excused", "collected"
-        console.log(`Skipping non-numeric mark: "${originalText}"`);
+        console.log(`⏭️ Skipping non-numeric mark: "${originalText}"`);
         return;
     } else {
         originalValue = parseFloat(originalText);
@@ -531,21 +606,15 @@ function startGradeChanger() {
     
     // Try initial initialization
     setTimeout(() => {
-        simulateNHI(); // Add debug simulation
-        setTimeout(() => {
-            initializeEditableGrades();
-            calculateFinalAverage();
-        }, 1000); // Wait 1 second after simulation
+        initializeEditableGrades();
+        calculateFinalAverage();
     }, 1000);
     
     // Also try a few more times in case popup takes longer to load
     setTimeout(() => {
         if (document.getElementById('CourseSummary')) {
-            simulateNHI(); // Add debug simulation
-            setTimeout(() => {
-                initializeEditableGrades();
-                calculateFinalAverage();
-            }, 1000);
+            initializeEditableGrades();
+            calculateFinalAverage();
         }
     }, 3000);
 }

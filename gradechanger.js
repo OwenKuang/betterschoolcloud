@@ -3,8 +3,8 @@
 // Global storage for editable values
 let editableMarks = new Map(); 
 let editableWeights = new Map(); 
-let editablePossiblePoints = new Map();
-let originalValues = new Map(); // Store original values for reset 
+let editablePossiblePoints = new Map(); 
+let originalValues = new Map(); // Store original values for reset
 
 // Function to create unique identifier for each grade cell
 function createCellId(sectionIndex, tableIndex, rowIndex) {
@@ -43,7 +43,7 @@ function handleMutation(mutationsList, observer) {
                         setTimeout(() => {
                             initializeEditableGrades();
                             calculateFinalAverage();
-                        }, 500); // Small delay to let popup fully render
+                        }, 500);
                         return;
                     }
                 }
@@ -85,7 +85,16 @@ function calculateTableAverage(table, sectionIndex, tableIndex) {
             if (markInput && markInput.value !== '') {
                 mark = parseFloat(markInput.value);
             } else if (markCell) {
-                mark = parseFloat(markCell.textContent.trim());
+                const markText = markCell.textContent.trim();
+                // Handle NHI and other special cases
+                if (markText.toLowerCase() === 'nhi') {
+                    mark = 0;
+                } else if (!isNaN(parseFloat(markText))) {
+                    mark = parseFloat(markText);
+                } else {
+                    // Skip non-numeric values like "absent", "excused", "collected"
+                    return; // Skip this row
+                }
             }
         }
         
@@ -111,7 +120,8 @@ function calculateTableAverage(table, sectionIndex, tableIndex) {
             if (weightInput && weightInput.value !== '') {
                 weight = parseFloat(weightInput.value);
             } else if (weightCell) {
-                weight = parseFloat(weightCell.textContent.trim());
+                const weightText = weightCell.textContent.trim();
+                weight = weightText === '' ? 1 : parseFloat(weightText);
             } else {
                 weight = 1; // Default weight if not specified
             }
@@ -258,7 +268,7 @@ function calculateFinalAverage() {
     }
     console.log("Total weighted average: ", finaloutput.toFixed(4));
 
-    // Update display
+    // Update display with enhanced features
     updateGradeDisplay(finaloutput);
 }
 
@@ -413,8 +423,20 @@ function initializeEditableGrades() {
 
 // Make mark cell editable
 function makeMarkEditable(element, cellId) {
-    const originalValue = parseFloat(element.textContent.trim());
-    if (isNaN(originalValue)) return;
+    const originalText = element.textContent.trim();
+    let originalValue;
+    
+    // Handle special cases
+    if (originalText.toLowerCase() === 'nhi') {
+        originalValue = 0; // NHI (Not Handed In) = 0
+        console.log('Found NHI assignment - converting "${originalText}" to 0');
+    } else if (isNaN(parseFloat(originalText))) {
+        // Skip non-numeric values like "absent", "excused", "collected"
+        console.log(`Skipping non-numeric mark: "${originalText}"`);
+        return;
+    } else {
+        originalValue = parseFloat(originalText);
+    }
     
     // Store original value for reset
     originalValues.set(`${cellId}_mark`, originalValue);
@@ -509,15 +531,21 @@ function startGradeChanger() {
     
     // Try initial initialization
     setTimeout(() => {
-        initializeEditableGrades();
-        calculateFinalAverage();
+        simulateNHI(); // Add debug simulation
+        setTimeout(() => {
+            initializeEditableGrades();
+            calculateFinalAverage();
+        }, 1000); // Wait 1 second after simulation
     }, 1000);
     
     // Also try a few more times in case popup takes longer to load
     setTimeout(() => {
         if (document.getElementById('CourseSummary')) {
-            initializeEditableGrades();
-            calculateFinalAverage();
+            simulateNHI(); // Add debug simulation
+            setTimeout(() => {
+                initializeEditableGrades();
+                calculateFinalAverage();
+            }, 1000);
         }
     }, 3000);
 }

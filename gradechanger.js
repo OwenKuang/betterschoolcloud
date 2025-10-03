@@ -62,15 +62,15 @@ var targetNode = document.body;
 var config = { childList: true, subtree: true };
 observer.observe(targetNode, config);
 
-// Enhanced table average calculation using editable values when available
+// Enhanced table average calculation - with proper table total calculation
 function calculateTableAverage(table, sectionIndex, tableIndex) {
-    let totalMarks = 0;
-    let totalPossiblePoints = 0;
-    let totalCells = 0;
+    let totalWeightedScore = 0;
+    let totalWeight = 0;
+    let validAssignments = 0;
 
     const rows = table.querySelectorAll('tbody tr');
 
-    // Iterate through each row
+    // Iterate through each row to calculate weighted average for the table
     rows.forEach((row, rowIndex) => {
         const cellId = createCellId(sectionIndex, tableIndex, rowIndex);
         
@@ -145,26 +145,31 @@ function calculateTableAverage(table, sectionIndex, tableIndex) {
         if (!isNaN(mark) && !isNaN(possiblePoints) && !isNaN(weight) && possiblePoints > 0 && mark >= 0) {
             console.log(`Mark found: ${mark}, Possible Points: ${possiblePoints}, Weight: ${weight}`);
             
-            // Update individual assignment overall mark (ONLY for this specific assignment)
-            const percentage = (mark / possiblePoints) * 100;
-            updateAssignmentOverallMark(row, percentage);
+            // Update individual assignment overall mark
+            const assignmentPercentage = (mark / possiblePoints) * 100;
+            updateAssignmentOverallMark(row, assignmentPercentage);
             
-            totalMarks += ((mark / possiblePoints) * weight);
-            totalPossiblePoints += weight;
-            totalCells++;
+            // Add to table totals for weighted average calculation
+            totalWeightedScore += (assignmentPercentage * weight);
+            totalWeight += weight;
+            validAssignments++;
         } else {
             console.log("Invalid mark, possible points, or weight found.");
         }
     });
 
-    // Calculate the average for this table
-    const average = totalPossiblePoints > 0 ? totalMarks / totalPossiblePoints : 0;
-    console.log("Total marks: ", totalMarks);
-    console.log("Possible: ", totalPossiblePoints);
-    console.log('Table Average:', average.toFixed(4));
+    // Calculate table's weighted average percentage
+    const tableWeightedAverage = totalWeight > 0 ? totalWeightedScore / totalWeight : 0;
     
-    // Update table overall mark
-    updateTableOverallMark(table, average * 100);
+    console.log(`Table calculation: ${totalWeightedScore.toFixed(4)} ÷ ${totalWeight} = ${tableWeightedAverage.toFixed(4)}%`);
+    console.log(`Table has ${validAssignments} valid assignments`);
+    
+    // Update table overall mark with the weighted percentage
+    updateTableOverallMark(table, tableWeightedAverage);
+    
+    // Convert back to decimal for the original calculation system
+    const average = tableWeightedAverage / 100;
+    console.log('Table Average (for system):', average.toFixed(4));
     
     return average;
 }
@@ -181,27 +186,92 @@ function updateAssignmentOverallMark(row, percentage) {
         }
         
         // Update the text content directly
-        overallMarkCell.textContent = `${percentage.toFixed(2)}%`;
+        overallMarkCell.textContent = `${percentage.toFixed(4)}%`;
     }
 }
 
-// Update table overall mark - SIMPLIFIED
+// Updated table overall mark function - targets the tfoot th element
 function updateTableOverallMark(table, percentage) {
-    // Find the bottom row of the table that shows the overall percentage
-    const tableRows = table.querySelectorAll('tr');
-    const lastRow = tableRows[tableRows.length - 1];
+    console.log(`🎯 Updating table overall mark to ${percentage.toFixed(4)}%`);
     
-    if (lastRow) {
-        const lastCell = lastRow.querySelector('td:last-child');
-        if (lastCell && (lastCell.textContent.includes('%') || lastCell.textContent.trim() === '')) {
-            if (!lastCell.classList.contains('updated-table-mark')) {
-                lastCell.classList.add('updated-table-mark');
-                lastCell.style.fontWeight = 'bold';
-                lastCell.style.color = '#1976D2';
-                lastCell.style.fontSize = '14px';
+    // Method 1: Look specifically in tfoot for the th element
+    const tfoot = table.querySelector('tfoot');
+    let targetCell = null;
+    
+    if (tfoot) {
+        const tfootRow = tfoot.querySelector('tr');
+        if (tfootRow) {
+            const thElements = tfootRow.querySelectorAll('th');
+            if (thElements.length > 0) {
+                // Get the last th element (rightmost column)
+                targetCell = thElements[thElements.length - 1];
+                console.log(`📍 Found tfoot th element: "${targetCell.textContent.trim()}"`);
             }
-            lastCell.textContent = `${percentage.toFixed(2)}%`;
         }
+    }
+    
+    // Method 2: If no tfoot, look for any th element in the last rows that might contain percentage
+    if (!targetCell) {
+        console.log("🔍 No tfoot found, searching for th elements in table...");
+        const allRows = table.querySelectorAll('tr');
+        
+        // Check last few rows for th elements
+        for (let i = allRows.length - 1; i >= Math.max(0, allRows.length - 3); i--) {
+            const row = allRows[i];
+            const thElements = row.querySelectorAll('th');
+            
+            if (thElements.length > 0) {
+                // Look for th that contains percentage or is empty
+                for (let j = thElements.length - 1; j >= 0; j--) {
+                    const th = thElements[j];
+                    const thText = th.textContent.trim();
+                    if (thText.includes('%') || thText === '' || thText.match(/^\d+(\.\d+)?%?$/)) {
+                        targetCell = th;
+                        console.log(`📍 Found th element in row ${i}: "${thText}"`);
+                        break;
+                    }
+                }
+                if (targetCell) break;
+            }
+        }
+    }
+    
+    // Method 3: Fallback to any th element in the table
+    if (!targetCell) {
+        console.log("🔍 Fallback: looking for any th element...");
+        const allTh = table.querySelectorAll('th');
+        if (allTh.length > 0) {
+            targetCell = allTh[allTh.length - 1];
+            console.log(`📍 Using fallback th element: "${targetCell.textContent.trim()}"`);
+        }
+    }
+    
+    if (targetCell) {
+        // Style the cell to match the existing table styling
+        if (!targetCell.classList.contains('updated-table-mark')) {
+            targetCell.classList.add('updated-table-mark');
+            targetCell.style.color = '#FFFFFF'; // White text to stand out against dark green
+            targetCell.style.fontWeight = 'bold';
+            targetCell.style.textAlign = 'center';
+            // Don't change background, font size, padding, or border-radius to match existing styling
+        }
+        
+        targetCell.textContent = `${percentage.toFixed(4)}%`;
+        console.log(`✅ Table overall mark updated successfully: ${percentage.toFixed(4)}%`);
+    } else {
+        console.log("❌ Could not find target th cell for table overall mark");
+        
+        // Debug: Log table structure with focus on th elements
+        console.log("Table structure:");
+        const allRows = table.querySelectorAll('tr');
+        allRows.forEach((row, i) => {
+            const cells = row.querySelectorAll('td, th');
+            const cellData = Array.from(cells).map(cell => ({
+                tag: cell.tagName.toLowerCase(),
+                text: cell.textContent.trim()
+            }));
+            console.log(`Row ${i}:`, cellData);
+        });
     }
 }
 
@@ -332,7 +402,7 @@ function calculateFinalAverage() {
     updateGradeDisplay(finaloutput);
 }
 
-// Update grade display - check against original before updating
+// Update grade display - always use calculated value
 function updateGradeDisplay(finaloutput) {
     var tableElement = document.querySelector('.printed-block.sixty-percent');
 
@@ -347,20 +417,13 @@ function updateGradeDisplay(finaloutput) {
             }
             
             const calculatedGrade = (finaloutput * 100);
-            const difference = Math.abs(calculatedGrade - originalOverallGrade);
             
-            console.log(`🧮 Calculated: ${calculatedGrade.toFixed(2)}%, Original: ${originalOverallGrade}%, Difference: ${difference.toFixed(2)}%`);
+            console.log(`🧮 Calculated: ${calculatedGrade.toFixed(4)}%, Original: ${originalOverallGrade}%`);
             
-            // Only update if within 0.5% difference
-            if (difference <= 0.5) {
-                markElement.textContent = calculatedGrade.toFixed(2);
-                addTooltip(markElement, 'Interactive grade calculated by BetterSchoolCloud. Edit values above to see changes.');
-                console.log(`✅ Grade updated to calculated value: ${calculatedGrade.toFixed(2)}%`);
-            } else {
-                markElement.textContent = originalOverallGrade.toString();
-                addTooltip(markElement, `Calculated grade (${calculatedGrade.toFixed(2)}%) differs by more than 0.5% from original. Showing original grade.`);
-                console.log(`⚠️ Difference too large (${difference.toFixed(2)}%), keeping original grade: ${originalOverallGrade}%`);
-            }
+            // Always use the calculated grade
+            markElement.textContent = calculatedGrade.toFixed(4);
+            addTooltip(markElement, 'Interactive grade calculated by BetterSchoolCloud. Edit values above to see changes.');
+            console.log(`✅ Grade updated to calculated value: ${calculatedGrade.toFixed(4)}%`);
         }
     }
 }
@@ -504,7 +567,7 @@ function makeMarkEditable(element, cellId) {
     // Handle special cases
     if (originalText.toLowerCase() === 'nhi') {
         originalValue = 0; // NHI (Not Handed In) = 0
-        console.log(`🎯 Found NHI assignment - converting "${originalText}" to 0`);
+        console.log(`Found NHI assignment - converting "${originalText}" to 0`);
     } else if (isNaN(parseFloat(originalText))) {
         // Skip non-numeric values like "absent", "excused", "collected"
         console.log(`⏭️ Skipping non-numeric mark: "${originalText}"`);

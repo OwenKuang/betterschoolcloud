@@ -118,15 +118,29 @@ function calculateTableAverage(table, sectionIndex, tableIndex) {
                     return;
                 }
             } else if (markCell) {
-                const markText = markCell.textContent.trim();
-                // Handle NHI and other special cases
-                if (markText.toLowerCase() === 'nhi') {
-                    mark = 0;
+                const markText = markCell.textContent.trim().toLowerCase();
+
+                // Handle special status values
+                if (markText === 'nhi' || markText === 'n.h.i.' || markText === 'n.h.i') {
+                    mark = 0; // Not Handed In = 0
+                } else if (markText === 'completed' || markText === 'complete') {
+                    // COMPLETED typically means assignment done but not graded - skip it
+                    console.log(`Skipping row with status: "${markText}"`);
+                    return;
+                } else if (markText === 'absent' || markText === 'excused' || markText === 'collected' || markText === 'exc' || markText === 'abs') {
+                    // Skip non-graded statuses
+                    console.log(`Skipping row with status: "${markText}"`);
+                    return;
+                } else if (markText === '' || markText === '-' || markText === 'n/a') {
+                    // Skip empty or not applicable
+                    console.log(`Skipping row with empty/N/A mark`);
+                    return;
                 } else {
                     try {
-                        mark = parseFloat(markText);
+                        // Remove % symbol if present, then parse
+                        const cleanText = markText.replace('%', '');
+                        mark = parseFloat(cleanText);
                         if (isNaN(mark)) {
-                            // Skip non-numeric values like "absent", "excused", "collected", empty cells
                             console.log(`Skipping row with non-numeric mark: "${markText}"`);
                             return;
                         }
@@ -150,7 +164,7 @@ function calculateTableAverage(table, sectionIndex, tableIndex) {
             const pointsCell = row.querySelector('td[data-label="Points"]');
             if (pointsInput && pointsInput.value !== '') {
                 try {
-                    possiblePoints = parseInt(pointsInput.value);
+                    possiblePoints = parseFloat(pointsInput.value);
                     if (isNaN(possiblePoints) || possiblePoints <= 0) {
                         console.log(`Skipping row with invalid points input: "${pointsInput.value}"`);
                         return;
@@ -162,7 +176,7 @@ function calculateTableAverage(table, sectionIndex, tableIndex) {
             } else if (pointsCell) {
                 const pointsText = pointsCell.textContent.trim();
                 try {
-                    possiblePoints = parseInt(pointsText);
+                    possiblePoints = parseFloat(pointsText);
                     if (isNaN(possiblePoints) || possiblePoints <= 0) {
                         console.log(`Skipping row with invalid points: "${pointsText}"`);
                         return;
@@ -213,11 +227,17 @@ function calculateTableAverage(table, sectionIndex, tableIndex) {
         // Only process if we have valid data
         if (!isNaN(mark) && !isNaN(possiblePoints) && !isNaN(weight) && possiblePoints > 0 && mark >= 0) {
             debugLog(`Mark found: ${mark}, Possible Points: ${possiblePoints}, Weight: ${weight}`);
-            
+
             // Update individual assignment overall mark
             const assignmentPercentage = (mark / possiblePoints) * 100;
             updateAssignmentOverallMark(row, assignmentPercentage);
-            
+
+            // Skip assignments with 0 weight (they don't count toward grade)
+            if (weight === 0) {
+                debugLog(`Assignment has weight 0 - not counting toward grade`);
+                return;
+            }
+
             // Add to table totals for weighted average calculation
             totalWeightedScore += (assignmentPercentage * weight);
             totalWeight += weight;
@@ -817,27 +837,27 @@ function makeMarkEditable(element, cellId) {
 
 // Make points cell editable
 function makePointsEditable(element, cellId) {
-    const originalValue = parseInt(element.textContent.trim());
+    const originalValue = parseFloat(element.textContent.trim());
     if (isNaN(originalValue) || originalValue <= 0) return;
-    
+
     // Store original value for reset
     originalValues.set(`${cellId}_points`, originalValue);
     editablePossiblePoints.set(cellId, originalValue);
-    
+
     const input = document.createElement('input');
     input.type = 'number';
     input.value = originalValue;
-    input.min = '1';
-    input.step = '1';
+    input.min = '0.1';
+    input.step = '0.5';
     input.classList.add('points-input');
     input.style.width = '50px';
     input.style.border = '2px solid #2196F3';
     input.style.borderRadius = '4px';
     input.style.padding = '2px';
     input.style.textAlign = 'center';
-    
+
     input.addEventListener('input', function() {
-        const newValue = parseInt(this.value) || 1;
+        const newValue = parseFloat(this.value) || 1;
         editablePossiblePoints.set(cellId, newValue);
 
         // Visual indicator if changed from original

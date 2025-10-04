@@ -20,7 +20,7 @@ function calculate() {
   let newsum = 0;
   let count = 0;
   const input = document.querySelectorAll(".newmark");
-  const weightings = document.querySelectorAll("#weights");
+  const weightings = document.querySelectorAll(".weights");
   for (let j = 0; j < weightings.length; j++) {
     const weightings1 = parseFloat(weightings[j].value);
     const input1 = parseFloat(input[j].value);
@@ -101,7 +101,6 @@ var newCell4 = newRow.insertCell();
 
 // Add content to the cells
 newCell1.innerHTML = '<span style="color:black" style="font-weight:bold" ><b>Averages</b></span>';
-// newCell2.innerHTML = '<a style="color:black" class="icon-mail" href="mailto:owen.kuang@webberacademy.ca"><b>Email me any feedback or bugs! - owen.kuang52@gmail.com</b></a>';
 newCell3.innerHTML = '<span class ="unweightedmark" style="color:black"><b>' + av + " (Unweighted)" + '<b/></span>';
 newCell4.innerHTML = '<span style="color:black" class ="newweightedmark" ><b>' + average + " (Weighted)" + '</b></span>';
 
@@ -162,7 +161,7 @@ for (let i = 0; i < rows.length; i++) {
 
       const cell = document.createElement('td');
       const input = document.createElement('input');
-      input.id = 'weights';
+      input.classList.add('weights');
       input.style.width = '20%';
       input.style.height = '15%';
       input.type = 'text';
@@ -180,9 +179,9 @@ for (let i = 0; i < rows.length; i++) {
 }
 
 //makes the newmark inputter
-// calculates the new grade with weighting 
+// calculates the new grade with weighting
 // Add event listener to the table element
-const givemoreevents = document.querySelectorAll("#weights")
+const givemoreevents = document.querySelectorAll(".weights")
 const giveevents = document.querySelectorAll('.newmark');
 giveevents.forEach(giveevent => {
   giveevent.addEventListener("input", twofunctions);

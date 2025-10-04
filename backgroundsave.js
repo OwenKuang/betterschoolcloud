@@ -134,7 +134,7 @@ let weightList = [];
 // Add an event listener to the save weight button
 saveWeightButton.addEventListener('click', () => {
 
-  let findweights = document.querySelectorAll("#weights");
+  let findweights = document.querySelectorAll(".weights");
   saveWeightButton.style.backgroundColor = '#ccc';
   setTimeout(function() {
     saveWeightButton.style.backgroundColor = '#fff';
@@ -148,7 +148,6 @@ saveWeightButton.addEventListener('click', () => {
 
   }
   // Store the updated weightList in localStorage
-  localStorage.setItem('subweightlist' , JSON.stringify(weightList));
   localStorage.setItem('weightList', JSON.stringify(weightList));
   
 

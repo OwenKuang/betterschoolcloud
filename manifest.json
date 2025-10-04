@@ -14,7 +14,7 @@
             "128": "icon128.png"
         },
         "default_popup": "popup.html",
-        "default_title": "BetterSchooCloud"
+        "default_title": "BetterSchoolCloud"
     },
     "content_scripts": [
         {

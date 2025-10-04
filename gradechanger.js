@@ -1,11 +1,34 @@
 // Enhanced Grade Changer - Simple editable grades with original calculation logic
 
+// Debug mode - set to false for production
+const DEBUG_MODE = false;
+function debugLog(...args) {
+    if (DEBUG_MODE) {
+        console.log(...args);
+    }
+}
+
+// Track if any values have been edited
+let hasEdits = false;
+
 // Global storage for editable values
-let editableMarks = new Map(); 
-let editableWeights = new Map(); 
-let editablePossiblePoints = new Map(); 
+let editableMarks = new Map();
+let editableWeights = new Map();
+let editablePossiblePoints = new Map();
 let originalValues = new Map(); // Store original values for reset
 let originalOverallGrade = null; // Store the original overall grade from SchoolCloud
+
+// Debounce helper
+let debounceTimer = null;
+function debounce(func, delay) {
+    return function(...args) {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => func.apply(this, args), delay);
+    };
+}
+
+// Create debounced calculation function
+const debouncedCalculate = debounce(calculateFinalAverage, 300);
 
 // Function to create unique identifier for each grade cell
 function createCellId(sectionIndex, tableIndex, rowIndex) {
@@ -40,7 +63,7 @@ function handleMutation(mutationsList, observer) {
                     // Check if this node or its children contain CourseSummary
                     const courseSummary = node.id === 'CourseSummary' ? node : node.querySelector('#CourseSummary');
                     if (courseSummary) {
-                        console.log("🔄 Course Summary popup detected - reinitializing editable grades");
+                        debugLog("Course Summary popup detected - reinitializing editable grades");
                         setTimeout(() => {
                             initializeEditableGrades();
                             calculateFinalAverage();
@@ -84,22 +107,37 @@ function calculateTableAverage(table, sectionIndex, tableIndex) {
             const markInput = row.querySelector('.mark-input');
             const markCell = row.querySelector('td[data-label="Mark"] span');
             if (markInput && markInput.value !== '') {
-                mark = parseFloat(markInput.value);
+                try {
+                    mark = parseFloat(markInput.value);
+                    if (isNaN(mark)) {
+                        console.log(`Skipping row with invalid mark input: "${markInput.value}"`);
+                        return;
+                    }
+                } catch (e) {
+                    console.log(`Error parsing mark input: ${e.message}`);
+                    return;
+                }
             } else if (markCell) {
                 const markText = markCell.textContent.trim();
                 // Handle NHI and other special cases
                 if (markText.toLowerCase() === 'nhi') {
                     mark = 0;
-                } else if (!isNaN(parseFloat(markText))) {
-                    mark = parseFloat(markText);
                 } else {
-                    // Skip non-numeric values like "absent", "excused", "collected", empty cells
-                    console.log(`⏭️ Skipping row with non-numeric mark: "${markText}"`);
-                    return; // Skip this row
+                    try {
+                        mark = parseFloat(markText);
+                        if (isNaN(mark)) {
+                            // Skip non-numeric values like "absent", "excused", "collected", empty cells
+                            console.log(`Skipping row with non-numeric mark: "${markText}"`);
+                            return;
+                        }
+                    } catch (e) {
+                        console.log(`Error parsing mark: ${e.message}`);
+                        return;
+                    }
                 }
             } else {
                 // No mark found, skip this row
-                console.log(`⏭️ Skipping row with no mark found`);
+                console.log(`Skipping row with no mark found`);
                 return;
             }
         }
@@ -111,16 +149,30 @@ function calculateTableAverage(table, sectionIndex, tableIndex) {
             const pointsInput = row.querySelector('.points-input');
             const pointsCell = row.querySelector('td[data-label="Points"]');
             if (pointsInput && pointsInput.value !== '') {
-                possiblePoints = parseInt(pointsInput.value);
+                try {
+                    possiblePoints = parseInt(pointsInput.value);
+                    if (isNaN(possiblePoints) || possiblePoints <= 0) {
+                        console.log(`Skipping row with invalid points input: "${pointsInput.value}"`);
+                        return;
+                    }
+                } catch (e) {
+                    console.log(`Error parsing points input: ${e.message}`);
+                    return;
+                }
             } else if (pointsCell) {
                 const pointsText = pointsCell.textContent.trim();
-                possiblePoints = parseInt(pointsText);
-                if (isNaN(possiblePoints) || possiblePoints <= 0) {
-                    console.log(`⏭️ Skipping row with invalid points: "${pointsText}"`);
+                try {
+                    possiblePoints = parseInt(pointsText);
+                    if (isNaN(possiblePoints) || possiblePoints <= 0) {
+                        console.log(`Skipping row with invalid points: "${pointsText}"`);
+                        return;
+                    }
+                } catch (e) {
+                    console.log(`Error parsing points: ${e.message}`);
                     return;
                 }
             } else {
-                console.log(`⏭️ Skipping row with no points found`);
+                console.log(`Skipping row with no points found`);
                 return;
             }
         }
@@ -132,10 +184,27 @@ function calculateTableAverage(table, sectionIndex, tableIndex) {
             const weightInput = row.querySelector('.weight-input');
             const weightCell = row.querySelector('td[data-label="Weight"]');
             if (weightInput && weightInput.value !== '') {
-                weight = parseFloat(weightInput.value);
+                try {
+                    weight = parseFloat(weightInput.value);
+                    if (isNaN(weight)) {
+                        weight = 1;
+                        console.log(`Invalid weight input, defaulting to 1`);
+                    }
+                } catch (e) {
+                    weight = 1;
+                    console.log(`Error parsing weight input: ${e.message}, defaulting to 1`);
+                }
             } else if (weightCell) {
                 const weightText = weightCell.textContent.trim();
-                weight = weightText === '' ? 1 : parseFloat(weightText);
+                try {
+                    weight = weightText === '' ? 1 : parseFloat(weightText);
+                    if (isNaN(weight)) {
+                        weight = 1;
+                    }
+                } catch (e) {
+                    weight = 1;
+                    console.log(`Error parsing weight: ${e.message}, defaulting to 1`);
+                }
             } else {
                 weight = 1; // Default weight if not specified
             }
@@ -143,7 +212,7 @@ function calculateTableAverage(table, sectionIndex, tableIndex) {
 
         // Only process if we have valid data
         if (!isNaN(mark) && !isNaN(possiblePoints) && !isNaN(weight) && possiblePoints > 0 && mark >= 0) {
-            console.log(`Mark found: ${mark}, Possible Points: ${possiblePoints}, Weight: ${weight}`);
+            debugLog(`Mark found: ${mark}, Possible Points: ${possiblePoints}, Weight: ${weight}`);
             
             // Update individual assignment overall mark
             const assignmentPercentage = (mark / possiblePoints) * 100;
@@ -158,19 +227,25 @@ function calculateTableAverage(table, sectionIndex, tableIndex) {
         }
     });
 
+    // Only calculate if we have valid assignments
+    if (validAssignments === 0 || totalWeight === 0) {
+        debugLog(`Skipping table - no valid assignments (${validAssignments} assignments, ${totalWeight} total weight)`);
+        return null; // Return null to indicate no valid data
+    }
+
     // Calculate table's weighted average percentage
-    const tableWeightedAverage = totalWeight > 0 ? totalWeightedScore / totalWeight : 0;
-    
-    console.log(`Table calculation: ${totalWeightedScore.toFixed(4)} ÷ ${totalWeight} = ${tableWeightedAverage.toFixed(4)}%`);
-    console.log(`Table has ${validAssignments} valid assignments`);
-    
+    const tableWeightedAverage = totalWeightedScore / totalWeight;
+
+    debugLog(`Table calculation: ${totalWeightedScore.toFixed(4)} ÷ ${totalWeight} = ${tableWeightedAverage.toFixed(4)}%`);
+    debugLog(`Table has ${validAssignments} valid assignments`);
+
     // Update table overall mark with the weighted percentage
     updateTableOverallMark(table, tableWeightedAverage);
-    
+
     // Convert back to decimal for the original calculation system
     const average = tableWeightedAverage / 100;
-    console.log('Table Average (for system):', average.toFixed(4));
-    
+    debugLog('Table Average (for system):', average.toFixed(4));
+
     return average;
 }
 
@@ -192,7 +267,7 @@ function updateAssignmentOverallMark(row, percentage) {
 
 // Updated table overall mark function - targets the tfoot th element
 function updateTableOverallMark(table, percentage) {
-    console.log(`🎯 Updating table overall mark to ${percentage.toFixed(4)}%`);
+    debugLog(`🎯 Updating table overall mark to ${percentage.toFixed(4)}%`);
     
     // Method 1: Look specifically in tfoot for the th element
     const tfoot = table.querySelector('tfoot');
@@ -257,9 +332,9 @@ function updateTableOverallMark(table, percentage) {
         }
         
         targetCell.textContent = `${percentage.toFixed(4)}%`;
-        console.log(`✅ Table overall mark updated successfully: ${percentage.toFixed(4)}%`);
+        console.log(`Table overall mark updated successfully: ${percentage.toFixed(4)}%`);
     } else {
-        console.log("❌ Could not find target th cell for table overall mark");
+        console.log("Could not find target th cell for table overall mark");
         
         // Debug: Log table structure with focus on th elements
         console.log("Table structure:");
@@ -282,22 +357,22 @@ function calculateFinalAverage() {
     let globalsectionweight = 0;
     let finaloutput = 0;
 
-    console.log("Calculating final average...");
+    debugLog("Calculating final average...");
 
     const courseSummaryElement = document.getElementById('CourseSummary');
-    console.log("Course Summary Element:", courseSummaryElement);
+    debugLog("Course Summary Element:", courseSummaryElement);
 
     if (!courseSummaryElement) {
-        console.log("CourseSummary not found");
+        debugLog("CourseSummary not found");
         return;
     }
 
     const courseSections = courseSummaryElement.querySelectorAll('li');
-    console.log("Course Sections:", courseSections);
+    debugLog("Course Sections:", courseSections);
 
     // Iterate through each section
     courseSections.forEach((section, sectionIndex) => {
-        console.log(`Processing section ${sectionIndex + 1}...`);
+        debugLog(`Processing section ${sectionIndex + 1}...`);
 
         // Check for h2 element to get section weight
         let sectionWeight = 0;
@@ -312,7 +387,7 @@ function calculateFinalAverage() {
                 sectionWeight = parseFloat(weightMatch[1]) / 100;
                 checked = true;
             }
-            console.log(`Overall weight of section ${sectionIndex + 1}: ${sectionWeight}`);
+            debugLog(`Overall weight of section ${sectionIndex + 1}: ${sectionWeight}`);
         } else {
             console.log(`No overall weight specified for section ${sectionIndex + 1}. Assuming default weight: ${sectionWeight}`);
         }
@@ -340,9 +415,15 @@ function calculateFinalAverage() {
                 // Calculate the average for this table (now with editable support)
                 let tableAverage = calculateTableAverage(table, sectionIndex, tableIndex);
 
+                // Skip tables with no valid data
+                if (tableAverage === null || isNaN(tableAverage)) {
+                    debugLog(`Skipping table ${tableIndex + 1} in section ${sectionIndex + 1} - no valid data`);
+                    return; // Skip this table entirely
+                }
+
                 // Calculate the weighted average for this table
-                console.log("this is the table weight: ", tableWeight)
-                if (tableWeight > 0 && !isNaN(tableAverage)) {
+                debugLog("this is the table weight: ", tableWeight)
+                if (tableWeight > 0) {
                     wholedenom += tableWeight;
                     tableWeightedAverage = tableAverage * tableWeight;
                 }
@@ -353,24 +434,30 @@ function calculateFinalAverage() {
                     tableWeightedAverage = tableAverage;
                 }
 
-                console.log(`Weighted average for table ${tableIndex + 1} in section ${sectionIndex + 1}: ${tableWeightedAverage.toFixed(4)}`);
+                debugLog(`Weighted average for table ${tableIndex + 1} in section ${sectionIndex + 1}: ${tableWeightedAverage.toFixed(4)}`);
 
                 if (!isNaN(tableWeightedAverage)) {
                     sectionaverage += tableWeightedAverage;
                 }
-                console.log("this is section avergage every time: ", sectionaverage);
+                debugLog("this is section average every time: ", sectionaverage);
             }
         });
 
-        console.log("this is section avergage: ", sectionaverage);
+        debugLog("this is section average: ", sectionaverage);
+
+        // Skip sections with no valid data
+        if (sectionaverage === 0 && wholedenom === 0) {
+            debugLog(`Skipping section ${sectionIndex + 1} - no valid data`);
+            return; // Skip this section entirely
+        }
 
         if (wholedenom > 0 && sectionWeight > 0) {
             sectionaverage = sectionaverage / wholedenom;
         }
 
-        console.log("this is the sectionavarege: ", sectionaverage, " this is the whole denom: ", wholedenom);
+        debugLog("this is the section average: ", sectionaverage, " this is the whole denom: ", wholedenom);
 
-        // if there is a section weight, apply it 
+        // if there is a section weight, apply it
         if (sectionWeight > 0) {
             sectiontotal = sectionaverage * sectionWeight;
         }
@@ -378,7 +465,7 @@ function calculateFinalAverage() {
             sectiontotal = sectionaverage;
         }
 
-        console.log("this is the section average ", sectionaverage, " this is the section weight: ", sectionWeight, " this is the section total ", sectiontotal);
+        debugLog("this is the section average ", sectionaverage, " this is the section weight: ", sectionWeight, " this is the section total ", sectiontotal);
         globalsectionweight += sectionWeight
         wholedenomglobalscope = wholedenom;
         finaloutput += sectiontotal;
@@ -386,16 +473,24 @@ function calculateFinalAverage() {
         sectiontotal = 0;
     });
 
-    // Final calculation (original logic)
-    console.log(Math.abs(((wholedenomglobalscope / finaloutput) * 100)));
+    // Final calculation with division by zero guards
     console.log("denom: ", wholedenomglobalscope, "finaloutput: ", finaloutput, "global section weight: ", globalsectionweight)
+
     if (wholedenomglobalscope != 0 && globalsectionweight == 0) {
         finaloutput = finaloutput / wholedenomglobalscope;
-        console.log("passed infinity and .5 check")
+        console.log("Using table weights calculation")
+    } else if (globalsectionweight != 0) {
+        finaloutput = finaloutput / globalsectionweight;
+        console.log("Using section weights calculation")
+    } else if (wholedenomglobalscope == 0 && globalsectionweight == 0 && finaloutput != 0) {
+        // Edge case: no weights found but we have a result - use as-is
+        console.log("No weights found, using raw average")
+    } else {
+        // Both denominators are 0 and finaloutput is 0 - likely no valid data
+        finaloutput = 0;
+        console.log("No valid grade data found, defaulting to 0")
     }
-    else if (globalsectionweight != 0) {
-        finaloutput = finaloutput / globalsectionweight
-    }
+
     console.log("Total weighted average: ", finaloutput.toFixed(4));
 
     // Update display with enhanced features
@@ -413,19 +508,125 @@ function updateGradeDisplay(finaloutput) {
             // Store original grade if we haven't already
             if (originalOverallGrade === null) {
                 originalOverallGrade = parseFloat(markElement.textContent.trim());
-                console.log(`📊 Stored original overall grade: ${originalOverallGrade}%`);
+                debugLog(`Stored original overall grade: ${originalOverallGrade}%`);
             }
-            
+
             const calculatedGrade = (finaloutput * 100);
-            
-            console.log(`🧮 Calculated: ${calculatedGrade.toFixed(4)}%, Original: ${originalOverallGrade}%`);
-            
+
+            debugLog(`Calculated: ${calculatedGrade.toFixed(4)}%, Original: ${originalOverallGrade}%`);
+
             // Always use the calculated grade
             markElement.textContent = calculatedGrade.toFixed(4);
-            addTooltip(markElement, 'Interactive grade calculated by BetterSchoolCloud. Edit values above to see changes.');
-            console.log(`✅ Grade updated to calculated value: ${calculatedGrade.toFixed(4)}%`);
+
+            // Highlight if values have been edited
+            if (hasEdits) {
+                markElement.style.backgroundColor = '#fff3cd';
+                markElement.style.padding = '4px 8px';
+                markElement.style.borderRadius = '4px';
+                markElement.style.fontWeight = 'bold';
+            }
+
+            // Add original mark display and reset button
+            addOriginalMarkAndReset(markElement, tableElement);
+
+            // Add disclaimer next to mark
+            addDisclaimerText(markElement);
+
+            debugLog(`Grade updated to calculated value: ${calculatedGrade.toFixed(4)}%`);
         }
     }
+}
+
+// Add original mark display (removed - just keeping function for compatibility)
+function addOriginalMarkAndReset(markElement, tableElement) {
+    // Function removed - no longer showing original mark or reset button
+}
+
+// Reset all values to original
+function resetAllValues() {
+    // Reset all editable inputs to original values
+    editableMarks.forEach((value, cellId) => {
+        const originalMark = originalValues.get(`${cellId}_mark`);
+        if (originalMark !== undefined) {
+            editableMarks.set(cellId, originalMark);
+        }
+    });
+
+    editablePossiblePoints.forEach((value, cellId) => {
+        const originalPoints = originalValues.get(`${cellId}_points`);
+        if (originalPoints !== undefined) {
+            editablePossiblePoints.set(cellId, originalPoints);
+        }
+    });
+
+    editableWeights.forEach((value, cellId) => {
+        const originalWeight = originalValues.get(`${cellId}_weight`);
+        if (originalWeight !== undefined) {
+            editableWeights.set(cellId, originalWeight);
+        }
+    });
+
+    // Reset hasEdits flag
+    hasEdits = false;
+
+    // Re-initialize the UI with original values
+    const courseSummaryElement = document.getElementById('CourseSummary');
+    if (courseSummaryElement) {
+        // Clear existing inputs and re-create them with original values
+        courseSummaryElement.querySelectorAll('.mark-input, .points-input, .weight-input').forEach(input => {
+            const cellIdMatch = input.className.match(/cell-(.+)/);
+            if (cellIdMatch) {
+                const cellId = cellIdMatch[1];
+                if (input.classList.contains('mark-input')) {
+                    const originalMark = originalValues.get(`${cellId}_mark`);
+                    if (originalMark !== undefined) {
+                        input.value = originalMark;
+                        input.style.background = 'white';
+                        input.style.borderColor = '#4CAF50';
+                    }
+                } else if (input.classList.contains('points-input')) {
+                    const originalPoints = originalValues.get(`${cellId}_points`);
+                    if (originalPoints !== undefined) {
+                        input.value = originalPoints;
+                        input.style.background = 'white';
+                        input.style.borderColor = '#2196F3';
+                    }
+                } else if (input.classList.contains('weight-input')) {
+                    const originalWeight = originalValues.get(`${cellId}_weight`);
+                    if (originalWeight !== undefined) {
+                        input.value = originalWeight;
+                        input.style.background = 'white';
+                        input.style.borderColor = '#FF9800';
+                    }
+                }
+            }
+        });
+    }
+
+    // Recalculate with original values
+    calculateFinalAverage();
+}
+
+// Add disclaimer text next to the final mark
+function addDisclaimerText(markElement) {
+    // Check if disclaimer already exists
+    const parentCell = markElement.closest('td');
+    if (!parentCell || parentCell.querySelector('.bsc-disclaimer')) {
+        return;
+    }
+
+    const disclaimer = document.createElement('span');
+    disclaimer.className = 'bsc-disclaimer';
+    disclaimer.style.cssText = `
+        display: block;
+        font-size: 10px;
+        color: #856404;
+        margin-top: 4px;
+        font-style: italic;
+    `;
+    disclaimer.textContent = 'BetterSchoolCloud calculation - verify with official grades';
+
+    parentCell.appendChild(disclaimer);
 }
 
 // Add tooltip (simplified from original)
@@ -508,19 +709,21 @@ function initializeEditableGrades() {
         return;
     }
 
-    // Only clear data if we're starting fresh (no existing inputs)
+    // Check if inputs already exist - if so, don't reinitialize
     const hasExistingInputs = courseSummaryElement.querySelector('.mark-input, .points-input, .weight-input');
-    if (!hasExistingInputs) {
-        console.log("Starting fresh - clearing data and reading original values");
-        editableMarks.clear();
-        editableWeights.clear();
-        editablePossiblePoints.clear();
-        originalValues.clear();
-        originalOverallGrade = null; // Reset stored original grade
-    } else {
-        console.log("Inputs already exist - keeping current data");
-        return; // Don't re-initialize if inputs already exist
+    if (hasExistingInputs) {
+        console.log("Inputs already exist - keeping current data and recalculating");
+        // Just recalculate with existing data, don't clear anything
+        return;
     }
+
+    // Starting fresh - clear data and read original values
+    console.log("Starting fresh - clearing data and reading original values");
+    editableMarks.clear();
+    editableWeights.clear();
+    editablePossiblePoints.clear();
+    originalValues.clear();
+    originalOverallGrade = null; // Reset stored original grade
 
     const courseSections = courseSummaryElement.querySelectorAll('li');
     console.log(`Found ${courseSections.length} sections`);
@@ -570,7 +773,7 @@ function makeMarkEditable(element, cellId) {
         console.log(`Found NHI assignment - converting "${originalText}" to 0`);
     } else if (isNaN(parseFloat(originalText))) {
         // Skip non-numeric values like "absent", "excused", "collected"
-        console.log(`⏭️ Skipping non-numeric mark: "${originalText}"`);
+        console.log(`Skipping non-numeric mark: "${originalText}"`);
         return;
     } else {
         originalValue = parseFloat(originalText);
@@ -594,7 +797,19 @@ function makeMarkEditable(element, cellId) {
     input.addEventListener('input', function() {
         const newValue = parseFloat(this.value) || 0;
         editableMarks.set(cellId, newValue);
-        setTimeout(calculateFinalAverage, 300);
+
+        // Visual indicator if changed from original
+        const originalMark = originalValues.get(`${cellId}_mark`);
+        if (Math.abs(newValue - originalMark) > 0.01) {
+            this.style.background = '#fff3cd';
+            this.style.borderColor = '#ffc107';
+            hasEdits = true;
+        } else {
+            this.style.background = 'white';
+            this.style.borderColor = '#4CAF50';
+        }
+
+        debouncedCalculate();
     });
     
     element.parentNode.replaceChild(input, element);
@@ -624,7 +839,19 @@ function makePointsEditable(element, cellId) {
     input.addEventListener('input', function() {
         const newValue = parseInt(this.value) || 1;
         editablePossiblePoints.set(cellId, newValue);
-        setTimeout(calculateFinalAverage, 300);
+
+        // Visual indicator if changed from original
+        const originalPoints = originalValues.get(`${cellId}_points`);
+        if (newValue !== originalPoints) {
+            this.style.background = '#fff3cd';
+            this.style.borderColor = '#ffc107';
+            hasEdits = true;
+        } else {
+            this.style.background = 'white';
+            this.style.borderColor = '#2196F3';
+        }
+
+        debouncedCalculate();
     });
     
     element.innerHTML = '';
@@ -656,7 +883,20 @@ function makeWeightEditable(element, cellId) {
         const newValue = parseFloat(this.value);
         // Allow 0 weights, only default to 0.1 if NaN
         editableWeights.set(cellId, isNaN(newValue) ? 0.1 : newValue);
-        setTimeout(calculateFinalAverage, 300);
+
+        // Visual indicator if changed from original
+        const originalWeight = originalValues.get(`${cellId}_weight`);
+        const currentValue = isNaN(newValue) ? 0.1 : newValue;
+        if (Math.abs(currentValue - originalWeight) > 0.01) {
+            this.style.background = '#fff3cd';
+            this.style.borderColor = '#ffc107';
+            hasEdits = true;
+        } else {
+            this.style.background = 'white';
+            this.style.borderColor = '#FF9800';
+        }
+
+        debouncedCalculate();
     });
     
     element.innerHTML = '';
@@ -666,7 +906,7 @@ function makeWeightEditable(element, cellId) {
 // Initialize everything - try immediately and also watch for popup
 function startGradeChanger() {
     console.log("🎯 BetterSchoolCloud Enhanced Grade Changer Starting...");
-    
+
     // Try initial initialization
     setTimeout(() => {
         initializeEditableGrades();

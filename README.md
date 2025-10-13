@@ -12,7 +12,7 @@ A Chrome extension that enhances the SchoolCloud grade viewing experience with i
 
 ## Features
 
-### 📊 Course List View (Main Page)
+### Course List View (Main Page)
 - **Editable Marks**: Click to edit grades for each course
 - **Custom Weightings**: Assign weight values to courses (default: 1)
 - **Weighted Average**: Automatically calculated weighted average across all courses
@@ -20,11 +20,11 @@ A Chrome extension that enhances the SchoolCloud grade viewing experience with i
 - **Custom Background**: Upload and save custom background images
 - **Student Info Display**: Shows student details in a clean header
 
-### 📈 Individual Course View (Course Details Popup)
+### Individual Course View (Course Details Popup)
 - **Interactive Grade Editing**:
-  - ✏️ Edit marks (green border)
-  - ✏️ Edit possible points (blue border)
-  - ✏️ Edit assignment weights (orange border)
+  - Edit marks (green border)
+  - Edit possible points (blue border)
+  - Edit assignment weights (orange border)
 - **Visual Change Indicators**: Yellow highlighting shows modified values
 - **Auto-Recalculation**: All totals update automatically
 - **Individual Assignment %**: Shows percentage for each assignment

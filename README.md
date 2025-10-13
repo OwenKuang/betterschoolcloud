@@ -84,7 +84,7 @@ Set `DEBUG_MODE = true` in `gradechanger.js` to enable console logging for devel
 
 ## Version
 
-Current Version: 1.5.3
+Current Version: 1.6.0
 
 ## License
 

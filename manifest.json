@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
     "name": "Better SchoolCloud",
-    "version": "1.5.3",
+    "version": "1.6.0",
     "description": "Takes your SchoolCloud experience to the next level.",
     "icons": {
         "16": "icon16.png"
